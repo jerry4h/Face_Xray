@@ -18,6 +18,9 @@ from tqdm import tqdm
 from color_transfer import color_transfer
 from utils import files, FACIAL_LANDMARKS_IDXS, shape_to_np
 
+# 调试
+import pdb
+
 def main():
     args = get_parser()
 
@@ -30,7 +33,6 @@ def main():
     # face detector
     detector = dlib.get_frontal_face_detector()
     predictor = dlib.shape_predictor(args.shapePredictor)
-
     
     for i, srcFace in enumerate(srcFaces):
         # load bgr
@@ -55,22 +57,32 @@ def main():
         # if found
         # 产生凸包
         targetBgr = cv2.cvtColor(targetRgb, cv2.COLOR_RGB2BGR)
-        hullMask = convex_hull(srcFaceBgr.shape, srcLms) # size (h, w, c) mask of face convex hull
+        hullMask = convex_hull(srcFaceBgr.shape, srcLms) # size (h, w, c) mask of face convex hull, uint8 [0, 255]  # TODO: 去掉channel减少参数
 
         # 产生随机变形
-        anchors, deformedAnchors = random_deform(hullMask.shape[:2], 4, 4)
+        anchors, deformedAnchors = random_deform(hullMask.shape[:2], 4, 4)  # 随机变形存在问题：需要取变形结果与原图的交集。
 
         # 分段仿射变换
-        warped = piecewise_affine_transform(hullMask, anchors, deformedAnchors) # size (h, w) warped mask
+        warped = piecewise_affine_transform(hullMask, anchors, deformedAnchors) # size (h, w, c) warped mask float64 [0, 1.0]
+        # 将 warped 区域限制在人脸范围内，避免背景的影响
+        warped *= (hullMask / hullMask.max())
 
         # 高斯模糊
         blured = cv2.GaussianBlur(warped, (5,5), 3)
 
         # 颜色矫正，迁移高斯模糊后blured mask区域的颜色，并对颜色纠正的blured区域人脸+原背景作为融合图片
-        targetBgrT = color_transfer((srcFaceBgr*blured).astype(np.uint8), (targetBgr*blured).astype(np.uint8)) + (targetBgr*(1-blured)).astype(np.uint8)
+        left, up, right, bot = get_roi(warped)  # 获取 warped 区域
+        src = (srcFaceBgr[up:bot,left:right,:]).astype(np.uint8)
+        tgt = (targetBgr[up:bot,left:right,:]).astype(np.uint8)
+        targetBgrT = color_transfer(src, tgt)
+        cv2.imwrite(f'results/transfer/src.jpg', src)
+        cv2.imwrite(f'results/transfer/tgt.jpg', tgt)
+        cv2.imwrite(f'results/transfer/tgtrans.jpg', targetBgrT)
+        targetBgr_T = targetBgr * 1  # 开辟新内存空间
+        targetBgr_T[up:bot,left:right,:] = targetBgrT  # 将色彩迁移的部分转移到原图片
 
         # 融合
-        resultantFace = forge(srcFaceBgr, targetBgrT, blured)  # forged face
+        resultantFace = forge(srcFaceBgr, targetBgr_T, blured)  # forged face
 
         # 混合边界
         resultantBounding = get_bounding(blured)
@@ -107,6 +119,27 @@ def find_one_neighbor(detector, predictor, srcPath, srcLms, faceDatabase, thresh
         if dist < threshold and basename(face).split('_')[0] != basename(srcPath).split('_')[0]:
             return rgb
     return None
+
+
+def get_roi(warped):
+    '''返回 warped 区域的 roi 边框
+    warped: (h, w, c), float64, [0, 1]
+    return: left, up, right, bot.
+    '''
+    left, up, right, bot = 0, 0, 0, 0
+    gray = warped[:, :, 0]
+    rowHistogram, colHistogram = gray.sum(axis=0), gray.sum(axis=1)
+    for i, num in enumerate(rowHistogram):
+        if left == 0 and num !=0:
+            left = i
+        if i > 0 and rowHistogram[i-1]>0 and num==0 and right == 0:
+            right = i
+    for i, num in enumerate(colHistogram):
+        if up == 0 and num !=0:
+            up = i
+        if i > 0 and colHistogram[i-1]>0 and num==0 and bot == 0:
+            bot = i
+    return left, up, right, bot
 
 
 def forge(srcRgb, targetRgb, mask):
