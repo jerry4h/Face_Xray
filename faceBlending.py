@@ -74,6 +74,7 @@ def main():
         left, up, right, bot = get_roi(warped)  # 获取 warped 区域
         src = (srcFaceBgr[up:bot,left:right,:]).astype(np.uint8)
         tgt = (targetBgr[up:bot,left:right,:]).astype(np.uint8)
+        # pdb.set_trace()
         targetBgrT = color_transfer(src, tgt)
         cv2.imwrite(f'results/transfer/src.jpg', src)
         cv2.imwrite(f'results/transfer/tgt.jpg', tgt)
@@ -100,7 +101,10 @@ def main():
 
 def get_landmarks(detector, predictor, rgb):
     # first get bounding box (dlib.rectangle class) of face.
-    boxes = detector(rgb, 1)
+    boxes = []
+    if detector:
+        boxes = detector(rgb, 1)
+        # pdb.set_trace()
     for box in boxes:
         landmarks = shape_to_np(predictor(rgb, box=box))
         break
@@ -126,7 +130,9 @@ def get_roi(warped):
     warped: (h, w, c), float64, [0, 1]
     return: left, up, right, bot.
     '''
-    left, up, right, bot = 0, 0, 0, 0
+    # pdb.set_trace()
+    height, width = warped.shape[:2]
+    left, up, right, bot = 0, 0, width, height
     gray = warped[:, :, 0]
     rowHistogram, colHistogram = gray.sum(axis=0), gray.sum(axis=1)
     for i, num in enumerate(rowHistogram):
@@ -205,8 +211,8 @@ def distance(lms1, lms2):
 
 def get_parser():
     parser = argparse.ArgumentParser(description='Demo for face x-ray fake sample generation')
-    parser.add_argument('--srcFacePath', '-sfp', type=str, default='./IB.jpg')
-    parser.add_argument('--faceDatabase', '-fd', type=str, default='./IF0.jpg')
+    parser.add_argument('--srcFacePath', '-sfp', type=str, default='./data/005.jpg')
+    parser.add_argument('--faceDatabase', '-fd', type=str, default='./data/002.jpg')
     parser.add_argument('--threshold', '-t', type=float, default=250, help='threshold for facial landmarks distance')
     parser.add_argument('--shapePredictor', '-sp', type=str, default='./shape_predictor_68_face_landmarks.dat', help='Path to dlib facial landmark predictor model')
     return parser.parse_args()
