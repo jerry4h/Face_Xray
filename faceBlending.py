@@ -12,7 +12,6 @@ from functools import partial
 from skimage.transform import PiecewiseAffineTransform, warp
 import numpy as np
 import cv2
-import dlib
 from tqdm import tqdm
 
 from color_transfer import color_transfer
@@ -23,6 +22,7 @@ import pdb
 
 def main():
     args = get_parser()
+    import dlib
 
     # source faces
     srcFaces = tqdm(files(args.srcFacePath, ['.jpg']))
@@ -114,6 +114,7 @@ def get_landmarks(detector, predictor, rgb):
 
 
 def find_one_neighbor(detector, predictor, srcPath, srcLms, faceDatabase, threshold):
+    import dlib
     for face in faceDatabase:
         rgb = dlib.load_rgb_image(face)
         landmarks = get_landmarks(detector, predictor, rgb)
@@ -130,11 +131,27 @@ def get_roi(warped):
     warped: (h, w, c), float64, [0, 1]
     return: left, up, right, bot.
     '''
-    # pdb.set_trace()
     height, width = warped.shape[:2]
     left, up, right, bot = 0, 0, width, height
     gray = warped[:, :, 0]
     rowHistogram, colHistogram = gray.sum(axis=0), gray.sum(axis=1)
+    for i in range(width):
+        if rowHistogram[i] != 0:
+            left = i
+            break
+    for i in range(width-1, -1, -1):
+        if rowHistogram[i] != 0:
+            right = i
+            break
+    for i in range(height):
+        if colHistogram[i] != 0:
+            up = i
+            break
+    for i in range(height-1, -1, -1):
+        if colHistogram[i] != 0:
+            bot = i
+            break
+    ''' Old style Implementeation. Maybe something is wrong.
     for i, num in enumerate(rowHistogram):
         if left == 0 and num !=0:
             left = i
@@ -145,6 +162,7 @@ def get_roi(warped):
             up = i
         if i > 0 and colHistogram[i-1]>0 and num==0 and bot == 0:
             bot = i
+    '''
     return left, up, right, bot
 
 
@@ -199,6 +217,8 @@ def random_deform(imageSize, nrows, ncols, mean=0, std=5):
 
 
 def piecewise_affine_transform(image, srcAnchor, tgtAnchor):
+    '''  Return 0-1 range
+    '''
     trans = PiecewiseAffineTransform()
     trans.estimate(srcAnchor, tgtAnchor)
     warped = warp(image, trans)

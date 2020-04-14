@@ -55,15 +55,17 @@ def rect_to_bb(rect):
 	return (x, y, w, h)
 
 def shape_to_np(shape, dtype="int"):
-	# initialize the list of (x, y)-coordinates
-	coords = np.zeros((68, 2), dtype=dtype)
+    if isinstance(shape, np.ndarray):
+        return shape.astype(dtype)  # 默认把 float 转到 int64/32
+    # initialize the list of (x, y)-coordinates
+    coords = np.zeros((68, 2), dtype=dtype)
 
     # 在68-landmarks上循环并转换成（x，y）坐标的2元组
-	for i in range(0, 68):
-		coords[i] = (shape.part(i).x, shape.part(i).y)
+    for i in range(0, 68):
+        coords[i] = (shape.part(i).x, shape.part(i).y)
 
-	# return the list of (x, y)-coordinates
-	return coords
+    # return the list of (x, y)-coordinates
+    return coords
 
 if __name__ == "__main__":
     pass

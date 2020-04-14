@@ -1,0 +1,1 @@
+from .fixed_detector import FixedDetector as FaceDetector
