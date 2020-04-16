@@ -16,4 +16,4 @@ A 3rd-party implemented Face-Xray for deepfake detection.
 - [ ] 判别器
 
 ## 预训练模型
-百度云连接：链接：https://pan.baidu.com/s/1N3NhdxzAWgHbfkcb25nUmA  提取码：uvc8
+百度网盘链接：https://pan.baidu.com/s/1N3NhdxzAWgHbfkcb25nUmA  提取码：uvc8
