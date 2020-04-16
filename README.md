@@ -14,3 +14,6 @@ A 3rd-party implemented Face-Xray for deepfake detection.
   - [x] 贴合功能类 `Blender`
     - [x] color_transfer: 基于mask迁移 
 - [ ] 判别器
+
+## 预训练模型
+百度云连接：链接：https://pan.baidu.com/s/1N3NhdxzAWgHbfkcb25nUmA  提取码：uvc8
