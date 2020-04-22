@@ -20,7 +20,7 @@ A 3rd-party implemented Face-Xray for deepfake detection.
 
 ## 训练日志
 - 4.20训练
- - 训练集：数据尺寸400*400，正负数据比=1：3
+ - [ ] 训练集：数据尺寸400*400，正负数据比=1：3
   - data: 15000张基于celeb数据集制作的混合人脸 + 5000张与混合人脸无重复背景的真实数据
   - label: data对应的facexray图
  - 验证集：数据尺寸400*400，正负数据比≈1：3
