@@ -57,8 +57,12 @@ _C.LOSS.USE_DIFFERENT_JOINTS_WEIGHT = False
 _C.DATASET = CN()
 _C.DATASET.ROOT = ''
 _C.DATASET.DATASET = 'mpii'
-_C.DATASET.TRAIN_SET = 'train'
-_C.DATASET.TEST_SET = 'valid'
+_C.DATASET.POS_SET = 'celebrityBlended'
+_C.DATASET.NEG_SET = 'celebritySelect0'
+_C.DATASET.TRAIN_LIST1 = 'train1.txt'
+_C.DATASET.TRAIN_LIST0 = 'train0.txt'
+_C.DATASET.TEST_LIST1 = 'valid1.txt'
+_C.DATASET.TEST_LIST0 = 'valid0.txt'
 _C.DATASET.DATA_FORMAT = 'jpg'
 _C.DATASET.HYBRID_JOINTS_TYPE = ''
 _C.DATASET.SELECT_DATA = False
@@ -125,24 +129,24 @@ _C.DEBUG.SAVE_HEATMAPS_GT = False
 _C.DEBUG.SAVE_HEATMAPS_PRED = False
 
 
-def update_config(cfg, args):
+def update_config(cfg, args, simple=False):
     cfg.defrost()
     cfg.merge_from_file(args.cfg)
+    if not simple:
+        if args.modelDir:
+            cfg.OUTPUT_DIR = args.modelDir
 
-    if args.modelDir:
-        cfg.OUTPUT_DIR = args.modelDir
+        if args.logDir:
+            cfg.LOG_DIR = args.logDir
 
-    if args.logDir:
-        cfg.LOG_DIR = args.logDir
+        if args.dataDir:
+            cfg.DATA_DIR = args.dataDir
 
-    if args.dataDir:
-        cfg.DATA_DIR = args.dataDir
-
-    if args.testModel:
-        cfg.TEST.MODEL_FILE = args.testModel
+        if args.testModel:
+            cfg.TEST.MODEL_FILE = args.testModel
 
     cfg.freeze()
-
+    
 
 if __name__ == '__main__':
     import sys

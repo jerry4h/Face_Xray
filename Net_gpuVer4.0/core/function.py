@@ -9,6 +9,8 @@ from core.evaluate import accuracy_classify
 def train(config, train_loader, nnb, nnc, criterion, optimizer, epoch, writer_dict, _print):
     batch_time = AverageMeter()
     data_time = AverageMeter()
+    lossNNB = AverageMeter()
+    lossNNC = AverageMeter()
     losses = AverageMeter()
     accs = AverageMeter()
 
@@ -24,6 +26,7 @@ def train(config, train_loader, nnb, nnc, criterion, optimizer, epoch, writer_di
         # 非阻塞允许多个线程同时进入临界区
         input = input.cuda(non_blocking=True)
         target = target.cuda(non_blocking=True)
+        cls_target = cls_target.cuda(non_blocking=True)
 
         # compute output
         output = nnb(input)
@@ -40,9 +43,11 @@ def train(config, train_loader, nnb, nnc, criterion, optimizer, epoch, writer_di
 
         # measure accuracy and record loss
         losses.update(loss.item(), input.size(0))
+        lossNNB.update(loss_nnb.item(), input.size(0))
+        lossNNC.update(loss_nnc.item(), input.size(0))
 
-        # 改用语义分割的PA准确率
-        acc = accuracy_classify(classify, cls_target)
+        # nnc 的输出
+        acc = accuracy_classify(classify, cls_target) * 100
 
         accs.update(acc, input.size(0))
 
@@ -52,25 +57,30 @@ def train(config, train_loader, nnb, nnc, criterion, optimizer, epoch, writer_di
 
         if i % config.PRINT_FREQ == 0:
             msg = 'Epoch: [{0}][{1}/{2}]\t' \
-                  'Time {batch_time.val:.3f}s ({batch_time.avg:.3f}s)\t' \
+                  'Time {batch_time.val:.1f}s ({batch_time.avg:.1f}s)\t' \
                   'Speed {speed:.1f} samples/s\t' \
-                  'Data {data_time.val:.3f}s ({data_time.avg:.3f}s)\t' \
-                  'Loss {loss.val:.5f} ({loss.avg:.5f})\t' \
-                  'Accuracy {accuracy:.4f}\t'.format(
+                  'Data {data_time.val:.1f}s ({data_time.avg:.1f}s)\t' \
+                  'Loss {loss.val:.2f} ({loss.avg:.2f})\t' \
+                  'LossNNB {lossNNB.val:.2f} ({lossNNB.avg:.2f})\t' \
+                  'LossNNC {lossNNC.val:.2f} ({lossNNC.avg:.2f})\t' \
+                  'Acc {accuracy.val:.1f} ({accuracy.avg:.1f})\t'.format(
                       epoch, i, len(train_loader), batch_time=batch_time,
                       speed=input.size(0)/batch_time.val,
-                      data_time=data_time, loss=losses, accuracy=acc)
+                      data_time=data_time, loss=losses,
+                      lossNNB=lossNNB, lossNNC=lossNNC, accuracy=accs)
             _print(msg)
 
             if writer_dict:
                 writer = writer_dict['writer']
                 global_steps = writer_dict['train_global_steps']
                 writer.add_scalar('train_loss', losses.val, global_steps)
-                writer.add_scalar('train_acc', acc, global_steps)
+                writer.add_scalar('train_acc', accs.val, global_steps)
                 writer_dict['train_global_steps'] = global_steps + 1
 
 def validate(config, val_loader, nnb, nnc, criterion, writer_dict, _print, isTrain=False):
     batch_time = AverageMeter()
+    lossNNB = AverageMeter()
+    lossNNC = AverageMeter()
     losses = AverageMeter()
     accs = AverageMeter()
 
@@ -85,6 +95,7 @@ def validate(config, val_loader, nnb, nnc, criterion, writer_dict, _print, isTra
             # 非阻塞允许多个线程同时进入临界区
             input = input.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)
+            cls_target = cls_target.cuda(non_blocking=True)
 
             # compute output
             output = nnb(input)
@@ -97,8 +108,10 @@ def validate(config, val_loader, nnb, nnc, criterion, writer_dict, _print, isTra
 
             # measure accuracy and record loss
             losses.update(loss.item(), input.size(0))
+            lossNNB.update(loss_nnb.item(), input.size(0))
+            lossNNC.update(loss_nnc.item(), input.size(0))
 
-            acc = accuracy_classify(classify, cls_target, isTrain)
+            acc = accuracy_classify(classify, cls_target, isTrain) * 100
 
             accs.update(acc, input.size(0))
 
@@ -106,17 +119,20 @@ def validate(config, val_loader, nnb, nnc, criterion, writer_dict, _print, isTra
             batch_time.update(time.time() - end)
             end = time.time()
 
-        msg = 'Test: Time {batch_time.avg:.3f}\t' \
-              'Loss {loss.avg:.4f}\t' \
-              'Accuracy {accuracy:.4f}\t'.format(
-                  batch_time=batch_time, loss=losses, accuracy=acc)
+        msg = 'Test: Time {batch_time.avg:.1f}\t' \
+              'Loss {loss.avg:.2f}\t' \
+              'LossNNB {lossnnb.avg:.2f}\t' \
+              'LossNNC {lossnnc.avg:.2f}\t' \
+              'Accuracy {accuracy.avg:.2f}\t'.format(
+                  batch_time=batch_time, loss=losses, lossnnb=lossNNB, lossnnc=lossNNC,
+                   accuracy=accs)
         _print(msg)
 
         if writer_dict:
             writer = writer_dict['writer']
             global_steps = writer_dict['valid_global_steps']
             writer.add_scalar('valid_loss', losses.avg, global_steps)
-            writer.add_scalar('valid_acc', acc, global_steps)
+            writer.add_scalar('valid_acc', accs.avg, global_steps)
             writer_dict['valid_global_steps'] = global_steps + 1
 
     return accs.val

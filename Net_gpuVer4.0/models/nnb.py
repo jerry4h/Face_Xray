@@ -492,11 +492,11 @@ class FaceXRayNet(nn.Module):
             model_dict.update(pretrained_dict)
             self.load_state_dict(model_dict)
             # 锁定原hrnet的参数
-            for k, v in self.named_parameters():
-                if 'upsample_modules' in k or 'output_modules' in k:
-                    continue
-                else:
-                    v.requires_grad = False
+            # for k, v in self.named_parameters():
+            #     if 'upsample_modules' in k or 'output_modules' in k:
+            #         continue
+            #     else:
+            #         v.requires_grad = False
 
 
 def get_nnb(config, **kwargs):

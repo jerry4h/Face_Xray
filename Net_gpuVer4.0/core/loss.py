@@ -33,6 +33,6 @@ class Loss:
 
         return self.facexrayLoss(pred_label, gt_label)
 
-    def ncc_loss(self, pred_label, gt_label):
+    def nnc_loss(self, pred_label, gt_label):
 
         return self.nncLoss(pred_label, gt_label)

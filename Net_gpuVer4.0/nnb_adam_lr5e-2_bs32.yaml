@@ -3,7 +3,7 @@ LOG_DIR: 'log/'
 DATA_DIR: ''
 OUTPUT_DIR: 'output/'
 WORKERS: 4
-PRINT_FREQ: 1000
+PRINT_FREQ: 100
 
 MODEL: 
   NAME: nnb
@@ -64,24 +64,28 @@ CUDNN:
   DETERMINISTIC: false
   ENABLED: true
 DATASET:
-  DATASET: 'BI_dataset'
+  DATASET: 'BI_dataset2'
   DATA_FORMAT: 'jpg'
-  ROOT: 'data/'
-  TEST_SET: 'val'
-  TRAIN_SET: 'train'
+  ROOT: '/nas/hjr'
+  POS_SET: 'celebrityBlended'
+  NEG_SET: 'celebritySelect0'
+  TRAIN_LIST1: 'train1.txt'
+  TRAIN_LIST0: 'train0.txt'
+  TEST_LIST1: 'valid1.txt'
+  TEST_LIST0: 'valid0.txt'
 TEST:
   BATCH_SIZE_PER_GPU: 32
   MODEL_FILE: ''
 TRAIN:
   BATCH_SIZE_PER_GPU: 32
   BEGIN_EPOCH: 0
-  END_EPOCH: 100000
+  END_EPOCH: 25
   RESUME: true
   LR_FACTOR: 0.1
   LR_STEP:
-  - 30
-  - 60
-  - 90
+  - 10
+  - 16
+  - 22
   OPTIMIZER: adam
   LR:  0.0002
   WD: 0.0001

@@ -31,7 +31,7 @@ class NNC(nn.Module):
     def forward(self, x):
         # 全局平均池化层 : [batch, 1, 1, 1]
         x = self.pool(x)
-        # 为了进行FC，把原输出展成FC可接受的一维data [batch, 1*256*256]
+        # 为了进行FC，把原输出展成FC可接受的一维data [batch, 1*1*1]
         x = x.view(x.size(0), -1)
         x = self.linear(x)
 

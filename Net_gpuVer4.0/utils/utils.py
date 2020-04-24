@@ -64,12 +64,18 @@ def create_logger(cfg, cfg_name, phase='train'):
     return logger, str(final_output_dir), str(tensorboard_log_dir)
 
 
-def get_optimizer(cfg, model):
+def get_optimizer(cfg, models):
+    params = []
+    if isinstance(models, list):
+        for m in models:
+            params += list(m.parameters())
+    else:
+        params = models.parameters
     optimizer = None
     if cfg.TRAIN.OPTIMIZER == 'sgd':
         optimizer = optim.SGD(
             #model.parameters(),
-            filter(lambda p: p.requires_grad, model.parameters()),
+            filter(lambda p: p.requires_grad, params),
             lr=cfg.TRAIN.LR,
             momentum=cfg.TRAIN.MOMENTUM,
             weight_decay=cfg.TRAIN.WD,
@@ -78,13 +84,13 @@ def get_optimizer(cfg, model):
     elif cfg.TRAIN.OPTIMIZER == 'adam':
         optimizer = optim.Adam(
             #model.parameters(),
-            filter(lambda p: p.requires_grad, model.parameters()),
+            filter(lambda p: p.requires_grad, params),
             lr=cfg.TRAIN.LR
         )
     elif cfg.TRAIN.OPTIMIZER == 'rmsprop':
         optimizer = optim.RMSprop(
             #model.parameters(),
-            filter(lambda p: p.requires_grad, model.parameters()),
+            filter(lambda p: p.requires_grad, params),
             lr=cfg.TRAIN.LR,
             momentum=cfg.TRAIN.MOMENTUM,
             weight_decay=cfg.TRAIN.WD,

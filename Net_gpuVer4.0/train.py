@@ -57,7 +57,7 @@ def parse_args():
     parser.add_argument('--testModel',
                         help='testModel',
                         type=str,
-                        default='./hrnet_w32-36af842e.pth')
+                        default='/nas/hjr/hrnet_w32-36af842e.pth')
 
     args = parser.parse_args()
     update_config(config, args)
@@ -73,7 +73,7 @@ def main():
     torch.backends.cudnn.deterministic = config.CUDNN.DETERMINISTIC
     torch.backends.cudnn.enabled = config.CUDNN.ENABLED
 
-    nnb = models.nnb.get_nnb(config)
+    nnb = models.nnb.get_nnb(config)  # 不锁定参数  TODO: optimzer 中途添加参数
     # 训练时令nnc的softmax不起作用
     nnc = models.nnc.get_nnc(True)
 
@@ -100,7 +100,7 @@ def main():
 
     # 一些参数
     # 初始化optimzer，训练除nnb的原hrnet参数外的参数
-    optimizer = get_optimizer(config, nnb)
+    optimizer = get_optimizer(config, [nnb, nnc])  # TODO: 暂时直接全部初始化
     last_epoch = config.TRAIN.BEGIN_EPOCH
     best_perf = 0.0
 
@@ -116,23 +116,24 @@ def main():
         )
 
     # Data loading code
-    # list_name没有单独标注在.yaml文件
     # transform还没能适用于其他规格，应做成[256, 256, 3]
     train_dataset = eval('dataset.' + config.DATASET.DATASET + '.' + config.DATASET.DATASET)(
-        config.DATASET.ROOT, config.DATASET.TRAIN_SET, None,
+        config.DATASET.ROOT, config.DATASET.POS_SET, config.DATASET.TRAIN_LIST1,
         transforms.Compose([
             transforms.Resize(256),
             transforms.ToTensor()
         ])
     )
+    train_dataset.loadTrue(config.DATASET.ROOT, config.DATASET.NEG_SET, config.DATASET.TRAIN_LIST0)
 
     valid_dataset = eval('dataset.' + config.DATASET.DATASET + '.' + config.DATASET.DATASET)(
-        config.DATASET.ROOT, config.DATASET.TEST_SET, None,
+        config.DATASET.ROOT, config.DATASET.POS_SET, config.DATASET.TEST_LIST1,
         transforms.Compose([
             transforms.Resize(256),
             transforms.ToTensor()
         ])
     )
+    valid_dataset.loadTrue(config.DATASET.ROOT, config.DATASET.NEG_SET, config.DATASET.TEST_LIST0)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -154,14 +155,15 @@ def main():
         lr_scheduler.step()
 
         # 前50000次迭代锁定原hrnet层参数训练，后面的迭代训练所有参数
-        if epoch == 25000:
-            for k, v in nnb.named_parameters():
-                v.requires_grad = True
+        # 暂时先不管 warming up
+        # if epoch == 25000:
+        #     for k, v in nnb.named_parameters():
+        #         v.requires_grad = True
 
         # train for one epoch
         train(config, train_loader, nnb, nnc, criterion, optimizer, epoch, writer_dict, _print)
         # evaluate on validation set
-        perf_indicator = validate(config, valid_loader, nnb, nnc,  criterion, writer_dict, _print, isTrain=True)
+        perf_indicator = validate(config, valid_loader, nnb, nnc, criterion, writer_dict, _print, isTrain=True)
 
         # 保存目前准确率最高的模型
         # if perf_indicator > best_perf:
@@ -169,11 +171,11 @@ def main():
         #    torch.save(model.module.state_dict(), './output/BI_dataset/bestfaceXray_'+str(best_perf)+'.pth')
         #    _print('[Save best model] ./output/BI_dataset/bestfaceXray_'+str(best_perf)+'.pth\t')
 
-        if epoch % 25000 == 0:
-            torch.save(nnb.module.state_dict(), './output/BI_dataset/faceXray_'+str(epoch)+'.pth')
-            torch.save(nnc.module.state_dict(), './output/BI_dataset/nnc'+str(epoch)+'.pth')
-            _print('[Save model] ./output/BI_dataset/faceXray_'+str(epoch)+'.pth\t')
-            _print('[Save the last model] ./output/BI_dataset/nnc'+str(epoch)+'.pth\t')
+        if epoch % 5 == 0:
+            torch.save(nnb.module.state_dict(), './output/BI_dataset2/faceXray_'+str(epoch)+'.pth')
+            torch.save(nnc.module.state_dict(), './output/BI_dataset2/nnc'+str(epoch)+'.pth')
+            _print('[Save model] ./output/BI_dataset2/faceXray_'+str(epoch)+'.pth\t')
+            _print('[Save the last model] ./output/BI_dataset2/nnc'+str(epoch)+'.pth\t')
 
     # 最后的模型
     torch.save(nnb.module.state_dict(), './output/BI_dataset/faceXray.pth')
