@@ -18,14 +18,16 @@ class FixedDetector(FaceDetector):
 
     def __init__(self, device, path_to_detector=None, verbose=False):
         super(FixedDetector, self).__init__(device, verbose)
+        
+        self.detected_faces = [[100, 100, 300, 300]]
 
+        
     def detect_from_image(self, tensor_or_path):
         # Only strings supported
         
-        detected_faces = [[100, 100, 300, 300]]
-
-        if not isinstance(detected_faces, list):
+        if not isinstance(self.detected_faces, list):
             raise TypeError
+        detected_faces = list(self.detected_faces)
 
         return detected_faces
 

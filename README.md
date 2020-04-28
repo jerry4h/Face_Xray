@@ -13,6 +13,7 @@ A 3rd-party implemented Face-Xray for deepfake detection.
     - [ ] 将 Detector/Regressor 功能与 Generator 解耦
   - [x] 贴合功能类 `Blender`
     - [x] color_transfer: 基于mask迁移 
+    - [x] Random_Deform 改进：随机缩放+向下抖动
 - [ ] 判别器
 
 ## 预训练模型

@@ -5,10 +5,13 @@ import cv2
 from tqdm import tqdm
 import json
 from utils import files, FACIAL_LANDMARKS_IDXS, shape_to_np
-from faceBlending import convex_hull, random_deform, piecewise_affine_transform, get_roi, forge, get_bounding
+from faceBlending import convex_hull, random_deform, piecewise_affine_transform,\
+     get_roi, forge, get_bounding, linear_deform
 from color_transfer import color_transfer
 
 PREDICTOR_PATH = './shape_predictor_68_face_landmarks.dat'
+DETECTED_FACES = [[10, 10, 246, 246]]
+SCALE, SHAKE_H =0.5, 0.2
 import pdb
 
 
@@ -44,6 +47,9 @@ class HRRegressor:
         import face_alignment
         self.fa = face_alignment.FaceAlignment(face_alignment.LandmarksType._2D,\
              device=device, flip_input=flip_input, face_detector=detectorType)
+        if 'fixed' in detectorType:
+            self.fa.face_detector.detected_faces = DETECTED_FACES  # 进一步封装
+
     def __call__(self, rgb, box=None):
         preds = self.fa.get_landmarks(rgb)
         if preds is None:  return None
@@ -74,7 +80,7 @@ class LMGenerator:
             if predictor == 'dlib':  # todo: 解耦 Generator 与 Detector/Regressor
                 self.predictor = DlibRegressor()
             elif predictor == 'hr':
-                self.predictor = HRRegressor()
+                self.predictor = HRRegressor(device='cpu', flip_input=True)
         if 'dt' in self.detectMode:
             if detector == 'dlib':
                 self.detector = DlibDetector()
@@ -158,7 +164,7 @@ class LMGenerator:
         imgList = self.prepareImgList(dataPath)
         # 开始处理：人脸检测+关键点回归+保存
         lmList = []
-        for path in tqdm(imgList[:20000]):
+        for path in tqdm(imgList):
             ldm = self.lmDetect(osp.join(dataPath, path))
             if ldm is None:
                 lmList.append(None)
@@ -189,7 +195,7 @@ class Blender:
         self.lms = np.array(lms)  # 用于计算相似度矩阵
         N = self.lms.shape[0]
         self.lms = np.reshape(self.lms, (N, -1))
-        print(self.lms.shape)  # (N, 64, 2)
+        print(self.lms.shape)  # (N, 136)
 
     def search(self, idx):
         ''' 保证不重复
@@ -209,7 +215,9 @@ class Blender:
     def blend(self, outPath):
         '''关键点读取、搜索、核心、保存（命名问题很重要）
         '''
+        print('outPath: ', outPath)
         # if not osp.isdir:
+        #     print('Warning: outPath not exist: ', outPath)
         #     os.mkdir(outPath)
         for i in tqdm(range(len(self.lms))):
             i_path = self.relativePaths[i]
@@ -221,8 +229,11 @@ class Blender:
                 j_name = '_'.join(osp.split(j_path)).rstrip('.jpg')
                 name = '_'.join([i_name, j_name])  # j attack i
                 # pdb.set_trace()
-                cv2.imwrite(osp.join(outPath, name+'.jpg'), blended)
-                cv2.imwrite(osp.join(outPath, name+'_label'+'.jpg'), label*255)
+                status = 0
+                status += cv2.imwrite(osp.join(outPath, name+'.jpg'), blended)
+                status += cv2.imwrite(osp.join(outPath, name+'_label'+'.jpg'), label*255)
+                if status != 2:
+                    print('Error: image saving failed: ', name)
 
     def core(self, i, j):
         '''贴合：用 i 的背景，接纳 j 的前景
@@ -232,7 +243,10 @@ class Blender:
         # pdb.set_trace()
         imgPair = []
         for path in paths:
-            img = cv2.imread(osp.join(self.dataPath, path))
+            imgPath = osp.join(self.dataPath, path)
+            img = cv2.imread(imgPath)
+            if img is None:
+                print('Error imgPath: ', imgPath)
             imgPair.append(img)
         
         hullMask = convex_hull(imgPair[0].shape, lms[0])  # todo: shrink mask.
@@ -240,8 +254,10 @@ class Blender:
         left, up, right, bot = get_roi(hullMask)
         left, up, right, bot = (left+0)//2, (up+0)//2, (right+hullMask.shape[1])//2, (bot+hullMask.shape[0])//2
         centerHullMask = hullMask[up:bot, left:right, :]
-        anchors, deformedAnchors = random_deform(centerHullMask.shape[:2], 4, 4, std=20)  # todo 方法不够理想
+        anchors, deformedAnchors = random_deform(centerHullMask.shape[:2], 4, 4)  # todo 方法不够理想
         warpedMask = piecewise_affine_transform(centerHullMask, anchors, deformedAnchors)
+        # 伪造区域随机化：进一步缩放+平移抖动
+        warpedMask = linear_deform(warpedMask, scale=SCALE, shake_h=SHAKE_H, random=True)
         # 将 warped 区域限制在人脸范围内，避免背景的影响
         warpedMask *= (centerHullMask / centerHullMask.max())
         # 还原
@@ -278,32 +294,35 @@ class Blender:
 if __name__ == '__main__':
     
     # 关键点生成
+    
+    # hr = HRRegressor()
     '''
-    hr = HRRegressor()
-    dataset = LMGenerator(detector=None, predictor=hr, pathMode='name', selectMode='first', detectMode='lm')
+    dataset = LMGenerator(detector=None, predictor='hr', pathMode='name', selectMode='first', detectMode='lm')
     dataset.prepareDataset(
-        dataPath='D:/BaiduNetdiskDownload/webface_align_112.tar/webface_align_112/0000100',
-        outPath='D:/BaiduNetdiskDownload/webface_align_112.tar/XrayTest.txt'
+        dataPath='D:/Dataset/randomSelected',
+        outPath='D:/Dataset/randomSelected10.txt'
     )
     '''
     '''
     # 合成
     blender = Blender(
-        'D:/BaiduNetdiskDownload/webface_align_112.tar/XrayTest.txt',
-        'D:/BaiduNetdiskDownload/webface_align_112.tar/webface_align_112'
+        'D:/Dataset/randomSelected10.txt',
+        'D:/Dataset/randomSelected'
         )
-    blender.blend('D:/BaiduNetdiskDownload/webface_align_112.tar/xrayBlendedTest')
+    blender.blend('D:/Dataset/randomSelectedBlend10')
     '''
     '''
     dataset = LMGenerator(detector=None, predictor='hr', pathMode='name', selectMode='first', detectMode='lm')
     dataset.prepareDataset(
-        dataPath='/nas/hjr/celebritySelect0',
-        outPath='/nas/hjr/celebrityLm0-20000.txt'
+        dataPath='/nas/hjr/FF++c23/original/randomSelected',
+        outPath='/nas/hjr/FF++c23/original/randomSelectedLm.txt'
     )
     '''
+    
     blender = Blender(
-        ldmPath='/nas/hjr/celebrityLm0-20000.txt',
-        dataPath='/nas/hjr/celebritySelect0',
-        topk=20, selectNum=1, gaussianKernel=9
+        ldmPath='/nas/hjr/FF++c23/original/randomSelectedLm.txt',
+        dataPath='/nas/hjr/FF++c23/original/randomSelected',
+        topk=20, selectNum=4, gaussianKernel=9
         )
-    blender.blend(outPath='/nas/hjr/celebrityBlended0-20000')
+    blender.blend(outPath='/nas/hjr/FF++c23/original/randomBlended')
+    
