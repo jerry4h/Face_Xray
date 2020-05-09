@@ -1,9 +1,11 @@
 import os.path as osp
+import glob
 import argparse
 import numpy as np
 import cv2
 from PIL import Image
 import torch
+import torch.nn.functional as F
 import torchvision
 from torchvision import transforms
 import matplotlib.pyplot as plt
@@ -18,11 +20,15 @@ def parse_args():
                         help='experiment configure file name',
                         type=str,
                         default='./nnb_adam_lr5e-2_bs32.yaml')
-    parser.add_argument('--nnb', help='NNB model path', type=str,
-                        default='D:/Dataset/faceXray_10.pth')
-    parser.add_argument('--nnc', help='NNC model path', type=str, default='D:/Dataset/nnc10.pth')
-    parser.add_argument('--root', help='images root path', type=str, default='D:/Dataset/ai_pictures/x25.mp4')
-    parser.add_argument('--list', help='image id list', type=str, default='D:/Dataset/ai_pictures/x25.txt')
+    parser.add_argument('--testNNB',
+                        help='testNNB',
+                        type=str,
+                        default='D:/Dataset/FCNNNC/faceXray_20.pth')
+    parser.add_argument('--testNNC',
+                        help='testNNC',
+                        type=str,
+                        default='D:/Dataset/FCNNNC/nnc20.pth')
+    parser.add_argument('--list', help='image id list', type=str, default='D:/Dataset/ai_pictures/x19.mp4/*.jpg')
 
     args = parser.parse_args()
     update_config(config, args, simple=True)
@@ -31,9 +37,10 @@ def parse_args():
 
 def loadModel(args):
     nnb = models.nnb.get_nnb(config)
-    nnc = models.nnc.get_nnc(False)
-    nnb.load_state_dict(torch.load(args.nnb, map_location='cpu'))
-    nnc.load_state_dict(torch.load(args.nnc, map_location='cpu'))
+    # nnb = models.fcn.get_fcn()
+    nnc = models.nnc.get_nnc(config)
+    nnb.load_state_dict(torch.load(args.testNNB, map_location='cpu'))
+    nnc.load_state_dict(torch.load(args.testNNC, map_location='cpu'))
     nnb.eval()
     nnc.eval()
     return nnb, nnc
@@ -63,12 +70,15 @@ def preProcessPIL(imgPath, transform):
 def getPredictions(img, nnb, nnc):
     with torch.no_grad():
         xray = nnb(img)
-        prob = nnc(xray)
+        logit = nnc(xray)
+        prob = torch.softmax(logit, dim=1)
+
     return xray, prob
 
 def visualize(img, xray, prob):
-    # import pdb
-    # pdb.set_trace()
+    import pdb
+    pdb.set_trace()
+    xray = F.interpolate(xray, img.size()[2:], mode='bilinear', align_corners=True)
     xray_color = torch.cat((xray, xray, xray), 1)
     grid_tensor = torch.cat((img, xray_color), dim=0)
     target = torchvision.utils.make_grid(grid_tensor).numpy()
@@ -88,12 +98,9 @@ if __name__ == '__main__':
 
     nnb, nnc = loadModel(args)
 
-    if args.list:
-        imgNames = [i.rstrip('\n')+'.jpg' for i in open(args.list, 'r')]
-    else:
-        imgNames = os.listdir(args.root)
-    for imgName in imgNames:
-        img = preProcessPIL(osp.join(args.root, imgName), transform)
+    imgPaths = glob.glob(args.list)
+    for imgPath in imgPaths:
+        img = preProcessPIL(imgPath, transform)
         xray, prob = getPredictions(img, nnb, nnc)
         visualize(img, xray, prob)
 

@@ -24,8 +24,7 @@ from tensorboardX import SummaryWriter
 from datetime import datetime
 from config import config
 from config import update_config
-from core.function import train
-from core.function import validate
+from core.function import train, validate, test
 from core.loss import Loss
 from utils.modelsummary import get_model_summary
 from utils.utils import get_optimizer
@@ -54,10 +53,14 @@ def parse_args():
                         help='data directory',
                         type=str,
                         default='')
-    parser.add_argument('--testModel',
-                        help='testModel',
+    parser.add_argument('--testNNB',
+                        help='testNNB',
                         type=str,
-                        default='/nas/hjr/hrnet_w32-36af842e.pth')
+                        default='/nas/hjr/nnb10CelebrityBlended.pth')
+    parser.add_argument('--testNNC',
+                        help='testNNC',
+                        type=str,
+                        default='/nas/hjr/nnc10CelebrityBlended.pth')
 
     args = parser.parse_args()
     update_config(config, args)
@@ -74,13 +77,16 @@ def main():
     torch.backends.cudnn.enabled = config.CUDNN.ENABLED
 
     nnb = models.nnb.get_nnb(config)  # 不锁定参数  TODO: optimzer 中途添加参数
+    # nnb = models.ae.get_ae()
+    # nnb = models.fcn.get_fcn(config)
     # 训练时令nnc的softmax不起作用
-    nnc = models.nnc.get_nnc(True)
+    nnc = models.nnc.get_nnc(config)
 
     writer_dict = {
         'writer': SummaryWriter(log_dir='./output/facexray/tensorboard/tensorboard' + '_' + datetime.now().strftime('%Y%m%d_%H%M%S')),
         'train_global_steps': 0,
         'valid_global_steps': 0,
+        'test_global_steps': 0,
     }
 
     # log init
@@ -118,22 +124,13 @@ def main():
     # Data loading code
     # transform还没能适用于其他规格，应做成[256, 256, 3]
     train_dataset = eval('dataset.' + config.DATASET.DATASET + '.' + config.DATASET.DATASET)(
-        config.DATASET.ROOT, config.DATASET.POS_SET, config.DATASET.TRAIN_LIST1,
-        transforms.Compose([
-            transforms.Resize(256),
-            transforms.ToTensor()
-        ])
-    )
-    train_dataset.loadTrue(config.DATASET.ROOT, config.DATASET.NEG_SET, config.DATASET.TRAIN_LIST0)
+        root=config.DATASET.TRAIN_ROOT, list_name=config.DATASET.TRAIN_LIST, mode='train', Transform='strong_pixel')
 
     valid_dataset = eval('dataset.' + config.DATASET.DATASET + '.' + config.DATASET.DATASET)(
-        config.DATASET.ROOT, config.DATASET.POS_SET, config.DATASET.TEST_LIST1,
-        transforms.Compose([
-            transforms.Resize(256),
-            transforms.ToTensor()
-        ])
-    )
-    valid_dataset.loadTrue(config.DATASET.ROOT, config.DATASET.NEG_SET, config.DATASET.TEST_LIST0)
+        root=config.DATASET.VALID_ROOT, list_name=config.DATASET.VALID_LIST, mode='valid', Transform='easy')
+
+    test_dataset = eval('dataset.' + config.DATASET.DATASET + '.' + config.DATASET.DATASET)(
+        root=config.DATASET.TEST_ROOT, list_name=config.DATASET.TEST_LIST, mode='test', Transform='easy')
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -151,8 +148,15 @@ def main():
         pin_memory=config.PIN_MEMORY
     )
 
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset,
+        batch_size=config.TEST.BATCH_SIZE_PER_GPU*len(gpus),
+        shuffle=False,
+        num_workers=config.WORKERS,
+        pin_memory=config.PIN_MEMORY
+    )
+
     for epoch in range(last_epoch, config.TRAIN.END_EPOCH):
-        lr_scheduler.step()
 
         # 前50000次迭代锁定原hrnet层参数训练，后面的迭代训练所有参数
         # 暂时先不管 warming up
@@ -163,7 +167,8 @@ def main():
         # train for one epoch
         train(config, train_loader, nnb, nnc, criterion, optimizer, epoch, writer_dict, _print)
         # evaluate on validation set
-        perf_indicator = validate(config, valid_loader, nnb, nnc, criterion, writer_dict, _print, isTrain=True)
+        perf_indicator = validate(config, valid_loader, nnb, nnc, criterion, writer_dict, _print)
+        test(config, test_loader, nnb, nnc, criterion, writer_dict, _print)
 
         # 保存目前准确率最高的模型
         # if perf_indicator > best_perf:
@@ -171,11 +176,12 @@ def main():
         #    torch.save(model.module.state_dict(), './output/BI_dataset/bestfaceXray_'+str(best_perf)+'.pth')
         #    _print('[Save best model] ./output/BI_dataset/bestfaceXray_'+str(best_perf)+'.pth\t')
 
-        if epoch % 5 == 0:
+        if epoch % 2 == 0:
             torch.save(nnb.module.state_dict(), './output/BI_dataset2/faceXray_'+str(epoch)+'.pth')
             torch.save(nnc.module.state_dict(), './output/BI_dataset2/nnc'+str(epoch)+'.pth')
             _print('[Save model] ./output/BI_dataset2/faceXray_'+str(epoch)+'.pth\t')
             _print('[Save the last model] ./output/BI_dataset2/nnc'+str(epoch)+'.pth\t')
+        lr_scheduler.step()
 
     # 最后的模型
     torch.save(nnb.module.state_dict(), './output/BI_dataset/faceXray.pth')

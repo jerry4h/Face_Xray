@@ -480,6 +480,7 @@ class FaceXRayNet(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
         if os.path.isfile(pretrained):
+            print('[MODEL] loading from %s' %pretrained)
             # 用gpu加载模型参数时
             pretrained_dict = torch.load(pretrained)
             logger.info('=> loading pretrained model {}'.format(pretrained))
@@ -501,5 +502,5 @@ class FaceXRayNet(nn.Module):
 
 def get_nnb(config, **kwargs):
     model = FaceXRayNet(config, **kwargs)
-    model.init_weights(config.TEST.MODEL_FILE)
+    model.init_weights(config.TEST.NNB_FILE)
     return model

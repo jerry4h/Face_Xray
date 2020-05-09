@@ -19,10 +19,9 @@ logger = logging.getLogger(__name__)
 
 class NNC(nn.Module):
 
-    def __init__(self, istrain):
+    def __init__(self):
         super(NNC, self).__init__()
 
-        self.istrain = istrain
         # 全局平均池化层
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
         # 全连接层，分成两类，是否伪造
@@ -35,12 +34,13 @@ class NNC(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.linear(x)
 
-        # torch.nn.CrossEntropyLoss()进行loss计算时不用经过softmax，否则计算不对
-        if not self.istrain:
-            # 按行计算
-            x = torch.softmax(x, dim=1)
-
         return x
+
+    def predict(self, x):
+        logits = self.forward(x)
+        probs = torch.softmax(logits, dim=1)
+
+        return probs
 
 
     def init_weights(self, pretrained='',):
@@ -53,6 +53,7 @@ class NNC(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
         if os.path.isfile(pretrained):
+            print('[MODEL] loading from %s' %pretrained)
             # 用cpu加载模型参数时
             pretrained_dict = torch.load(pretrained, map_location='cpu')
             logger.info('=> loading pretrained model {}'.format(pretrained))
@@ -72,7 +73,7 @@ class NNC(nn.Module):
                     v.requires_grad = False
 
 
-def get_nnc(istrain):
-    model = NNC(istrain)
-    model.init_weights()
+def get_nnc(config, **kwargs):
+    model = NNC()
+    model.init_weights(config.TEST.NNC_FILE)
     return model

@@ -1,6 +1,7 @@
 import os
 import os.path as osp
 import numpy as np
+from random import sample
 import cv2
 from tqdm import tqdm
 import json
@@ -80,7 +81,7 @@ class LMGenerator:
             if predictor == 'dlib':  # todo: 解耦 Generator 与 Detector/Regressor
                 self.predictor = DlibRegressor()
             elif predictor == 'hr':
-                self.predictor = HRRegressor(device='cpu', flip_input=True)
+                self.predictor = HRRegressor(device='cuda:0', flip_input=True)
         if 'dt' in self.detectMode:
             if detector == 'dlib':
                 self.detector = DlibDetector()
@@ -206,9 +207,13 @@ class Blender:
         subs = self.lms-pivot
         scores = (subs**2).sum(-1)  # l2 距离
         idxes = np.argpartition(scores, topk)[:topk]  # topK
-        outs = [idx]
-        while idx in outs:
-            outs = np.random.choice(idxes, size=selectNum)  # 对 idx 去重
+        # 去重
+        # 要忽略的集合
+        ignoring = [idx]
+        ignoring = [i for i in range(idx-10, idx+10)]  # 附近的10个都不要了
+        filteredIndexes = [i for i in idxes if i not in ignoring]
+        # pdb.set_trace()
+        outs = sample(filteredIndexes, k=selectNum)  # 对 idx 去重
         # pdb.set_trace()
         return outs
 
@@ -314,15 +319,15 @@ if __name__ == '__main__':
     '''
     dataset = LMGenerator(detector=None, predictor='hr', pathMode='name', selectMode='first', detectMode='lm')
     dataset.prepareDataset(
-        dataPath='/nas/hjr/FF++c23/original/randomSelected',
-        outPath='/nas/hjr/FF++c23/original/randomSelectedLm.txt'
+        dataPath='/nas/hjr/FF++c23/original/selected10k',
+        outPath='/nas/hjr/FF++c23/original/selected10kLm.txt'
     )
     '''
     
     blender = Blender(
-        ldmPath='/nas/hjr/FF++c23/original/randomSelectedLm.txt',
-        dataPath='/nas/hjr/FF++c23/original/randomSelected',
-        topk=20, selectNum=4, gaussianKernel=9
+        ldmPath='/mnt/hjr/FF++c23/original/selected10kLm.txt',
+        dataPath='/mnt/hjr/FF++c23/original/selected10k',
+        topk=50, selectNum=10, gaussianKernel=9
         )
-    blender.blend(outPath='/nas/hjr/FF++c23/original/randomBlended')
+    blender.blend(outPath='/mnt/hjr/FF++c23/original/selected10kBlendedx10')
     

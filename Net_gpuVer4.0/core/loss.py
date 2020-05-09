@@ -36,3 +36,8 @@ class Loss:
     def nnc_loss(self, pred_label, gt_label):
 
         return self.nncLoss(pred_label, gt_label)
+
+    @staticmethod
+    def total_loss(loss_nnb, loss_nnc):
+
+        return 100 * loss_nnb + 1 * loss_nnc

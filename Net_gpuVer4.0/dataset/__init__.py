@@ -4,3 +4,4 @@ from __future__ import print_function
 
 import dataset.BI_dataset
 import dataset.BI_dataset2
+import dataset.BI_dataset_aug
