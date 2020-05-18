@@ -502,14 +502,19 @@ class FaceXRayNet(nn.Module):
             for k, _ in pretrained_dict.items():
                 logger.info(
                     '=> loading {} pretrained model {}'.format(k, pretrained))
+            # import pdb; pdb.set_trace()
             model_dict.update(pretrained_dict)
             self.load_state_dict(model_dict, strict=True)
-            # 锁定原hrnet的参数
-            # for k, v in self.named_parameters():
-            #     if 'upsample_modules' in k or 'output_modules' in k:
-            #         continue
-            #     else:
-            #         v.requires_grad = False
+
+    def pretrained_grad(self, grad=False):
+        print('[NNB] pretrained grad:', grad)
+        # 锁定原hrnet的参数
+        for k, v in self.named_parameters():
+            # import pdb; pdb.set_trace()
+            if 'upsample_modules' in k or 'output_modules' in k:
+                continue
+            else:
+                v.requires_grad = grad
 
 
 def get_nnb(config, **kwargs):

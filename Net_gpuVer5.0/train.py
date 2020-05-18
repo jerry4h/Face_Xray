@@ -107,6 +107,11 @@ def main():
     # 一些参数
     # 初始化optimzer，训练除nnb的原hrnet参数外的参数
     optimizer = get_optimizer(config, [nnb, nnc])  # TODO: 暂时直接全部初始化
+    if len(gpus) > 1:
+        nnb.module.pretrained_grad(False)
+    else:
+        nnb.pretrained_grad(False)
+    NNB_GRAD = False
     last_iter = config.TRAIN.BEGIN_ITER
     best_perf = 0.0
 
@@ -124,7 +129,7 @@ def main():
     # Data loading code
     # transform还没能适用于其他规格，应做成[256, 256, 3]
     train_dataset = eval('dataset.' + config.DATASET.TRAIN_SET + '.' + config.DATASET.TRAIN_SET)(
-        root=config.DATASET.TRAIN_ROOT, list_name=config.DATASET.TRAIN_LIST, mode='train', Transform='pixel')
+        root=config.DATASET.TRAIN_ROOT, list_name=config.DATASET.TRAIN_LIST, mode='train', Transform='mild')
 
     valid_dataset = eval('dataset.' + config.DATASET.EVAL_SET + '.' + config.DATASET.EVAL_SET)(
         root=config.DATASET.VALID_ROOT, list_name=config.DATASET.VALID_LIST, mode='valid', Transform='simple')
@@ -139,10 +144,11 @@ def main():
         num_workers=config.WORKERS,
         pin_memory=config.PIN_MEMORY
     )
-    def cycle(iterable):
+    def cycle(loader):
         while True:
-            for x in iterable:
+            for x in loader:
                 yield x
+            loader.dataset.generate()
     train_generator = iter(cycle(train_loader))
 
     valid_loader = torch.utils.data.DataLoader(
@@ -164,12 +170,15 @@ def main():
     for iteration in range(last_iter, config.TRAIN.END_ITER, config.TRAIN.EVAL_ITER):
 
         # 前50000次迭代锁定原hrnet层参数训练，后面的迭代训练所有参数
-        # if epoch > 2 and NBB_FIXED:
-        #     for k, v in nnb.named_parameters():
-        #         v.requires_grad = True
+        if not NNB_GRAD and iteration > 20000:
+            if len(gpus) > 1:
+                nnb.module.pretrained_grad(True)
+            else:
+                nnb.pretrained_grad(True)
+            NNB_GRAD = True
 
         # train for one epoch
-        train(config, train_generator, nnb, nnc, criterion, optimizer, iteration, writer_dict, _print)
+        train(config, train_generator, nnb, nnc, criterion, optimizer, iteration, writer_dict, _print, lr_scheduler=lr_scheduler)
         # evaluate on validation set
         perf_indicator = validate(config, valid_loader, nnb, nnc, criterion, writer_dict, _print)
         test(config, test_loader, nnb, nnc, criterion, writer_dict, _print)
@@ -186,7 +195,7 @@ def main():
             torch.save(nnc.module.state_dict(), './output/BI_dataset2/nnc'+str(iter_now)+'.pth')
             _print('[Save model] ./output/BI_dataset2/faceXray_'+str(iter_now)+'.pth\t')
             _print('[Save the last model] ./output/BI_dataset2/nnc'+str(iter_now)+'.pth\t')
-        lr_scheduler.step()
+        # lr_scheduler.step()
 
     # 最后的模型
     torch.save(nnb.module.state_dict(), './output/BI_dataset/faceXray.pth')

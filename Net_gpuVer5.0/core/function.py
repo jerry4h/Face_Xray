@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from core.evaluate import classify_evaluate_roc  # accuracy_classify, 
 
-def train(config, train_generator, nnb, nnc, criterion, optimizer, iteration, writer_dict, _print):
+def train(config, train_generator, nnb, nnc, criterion, optimizer, iteration, writer_dict, _print, lr_scheduler=None):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     lossNNB = AverageMeter()
@@ -23,7 +23,8 @@ def train(config, train_generator, nnb, nnc, criterion, optimizer, iteration, wr
     for i in range(config.TRAIN.EVAL_ITER):
         input, target, cls_target, _, _ = next(train_generator)
 
-        input, target, cls_target = torch.cat(input), torch.cat(target), torch.cat(cls_target)
+        if isinstance(input, list):
+            input, target, cls_target = torch.cat(input), torch.cat(target), torch.cat(cls_target)
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -46,6 +47,8 @@ def train(config, train_generator, nnb, nnc, criterion, optimizer, iteration, wr
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        if lr_scheduler is not None:
+            lr_scheduler.step()
 
         # measure accuracy and record loss
         losses.update(loss.item(), input.size(0))

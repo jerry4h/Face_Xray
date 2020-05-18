@@ -106,11 +106,12 @@ def forge(srcRgb, targetRgb, mask):
     return (mask * targetRgb + (1 - mask) * srcRgb).astype(np.uint8)
 
 def get_bounding(mask):
-
-    bounding = np.zeros((mask.shape[1], mask.shape[0], 3))
-    for i in range(mask.shape[1]):
-        for j in range(mask.shape[0]):
-            bounding[i, j] = mask[i, j] * (1 - mask[i, j]) * 4 # 处理每个像素点
+    bounding = 4 * mask * (1 - mask)
+    # print(type(mask), mask.shape, mask.dtype)
+    # bounding = np.zeros((mask.shape[1], mask.shape[0], 3))
+    # for i in range(mask.shape[1]):
+    #     for j in range(mask.shape[0]):
+    #         bounding[i, j] = mask[i, j] * (1 - mask[i, j]) * 4 # 处理每个像素点
     return bounding
 
 
@@ -253,7 +254,7 @@ class sigmaSampler:
             return uniform(self.sigma[0], self.sigma[1])
 
 SCALE, SHAKE_H = 0.8, 0.2
-SAVE_BLEND, OUT_PATH = True, '/nas/hjr/tempBlended'
+SAVE_BLEND, OUT_PATH = True, '/nas/hjr/tempBlended1'
 
 class Blender:
     '''贴合器
@@ -332,7 +333,7 @@ class Blender:
         # 伪造区域随机化：进一步缩放+平移抖动
         warpedMask = linear_deform(warpedMask, scale=SCALE, shake_h=SHAKE_H, random=True)
         # 将 warped 区域限制在人脸范围内，避免背景的影响
-        warpedMask *= (centerHullMask / centerHullMask.max())
+        # warpedMask *= (centerHullMask / centerHullMask.max())
         # 还原
         warped = np.zeros_like(hullMask, dtype=warpedMask.dtype)
         warped[up:bot, left:right, :] = warpedMask

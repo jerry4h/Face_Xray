@@ -13,6 +13,8 @@ class Loss:
         # loss function
         self.facexrayLoss = torch.nn.BCELoss().cuda()
         self.nncLoss = torch.nn.CrossEntropyLoss().cuda()
+        self.alpha, self.beta = 100, 1
+        print('[Loss] Loss rate setting: ', [self.alpha, self.beta])
 
     def facexray_loss(self, pred_label, gt_label):
         # face xray loss使用交叉熵
@@ -37,7 +39,6 @@ class Loss:
 
         return self.nncLoss(pred_label, gt_label)
 
-    @staticmethod
-    def total_loss(loss_nnb, loss_nnc):
+    def total_loss(self, loss_nnb, loss_nnc):
 
-        return 100 * loss_nnb + 1 * loss_nnc
+        return self.alpha * loss_nnb + self.beta * loss_nnc

@@ -1,0 +1,98 @@
+GPUS: (0,1)
+LOG_DIR: 'log/'
+DATA_DIR: ''
+OUTPUT_DIR: 'output/'
+WORKERS: 4
+PRINT_FREQ: 100
+
+MODEL:
+  NAME: nnb
+  IMAGE_SIZE:
+  - 256
+  - 256
+  EXTRA:
+    STAGE1:
+      NUM_MODULES: 1
+      NUM_RANCHES: 1
+      BLOCK: BOTTLENECK
+      NUM_BLOCKS:
+      - 2
+      NUM_CHANNELS:
+      - 64
+      FUSE_METHOD: SUM
+    STAGE2:
+      NUM_MODULES: 1
+      NUM_BRANCHES: 2
+      BLOCK: BASIC
+      NUM_BLOCKS:
+      - 2
+      - 2
+      NUM_CHANNELS:
+      - 18
+      - 36
+      FUSE_METHOD: SUM
+    STAGE3:
+      NUM_MODULES: 3
+      NUM_BRANCHES: 3
+      BLOCK: BASIC
+      NUM_BLOCKS:
+      - 2
+      - 2
+      - 2
+      NUM_CHANNELS:
+      - 18
+      - 36
+      - 72
+      FUSE_METHOD: SUM
+    STAGE4:
+      NUM_MODULES: 2
+      NUM_BRANCHES: 4
+      BLOCK: BASIC
+      NUM_BLOCKS:
+      - 2
+      - 2
+      - 2
+      - 2
+      NUM_CHANNELS:
+      - 18
+      - 36
+      - 72
+      - 144
+      FUSE_METHOD: SUM
+CUDNN:
+  BENCHMARK: true
+  DETERMINISTIC: false
+  ENABLED: true
+DATASET:
+  TRAIN_SET: 'Xray_FFpp'
+  EVAL_SET: 'Xray_FFpp'
+  DATA_FORMAT: 'png'
+  TRAIN_ROOT: '/nas/hjr/FF++'  # /nas/hjr/ # 
+  TRAIN_LIST: ''  # celebrityBlendedTrain.txt # 
+  VALID_ROOT: '/nas/hjr/FF++'
+  VALID_LIST: ''
+  TEST_ROOT: '/nas/hjr/FF++'
+  TEST_LIST: ''
+TEST:
+  BATCH_SIZE_PER_GPU: 32
+  NNB_FILE: '/nas/hjr/hrnet_w18_small_model_v2.pth'
+  NNC_FILE: ''
+TRAIN:
+  BATCH_SIZE_PER_GPU: 16
+  BEGIN_ITER: 0
+  END_ITER: 50000
+  EVAL_ITER: 500
+  RESUME: true
+  LR_FACTOR: 0.1
+  LR_STEP:
+  - 20000
+  - 80000
+  - 150000
+  OPTIMIZER: adam
+  LR:  0.0002
+  WD: 0.0001
+  MOMENTUM: 0.9
+  NESTEROV: true
+  SHUFFLE: true
+DEBUG:
+  DEBUG: false
