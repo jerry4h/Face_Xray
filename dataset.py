@@ -1,7 +1,8 @@
 import os
 import os.path as osp
+import glob
 import numpy as np
-from random import sample
+from random import sample, randint, uniform
 import cv2
 from tqdm import tqdm
 import json
@@ -11,7 +12,7 @@ from faceBlending import convex_hull, random_deform, piecewise_affine_transform,
 from color_transfer import color_transfer
 
 PREDICTOR_PATH = './shape_predictor_68_face_landmarks.dat'
-DETECTED_FACES = [[10, 10, 246, 246]]
+DETECTED_FACES = [[35, 35, 214, 214]] # [[10, 10, 246, 246]]，这个数值很关键，用Test来认真选。
 SCALE, SHAKE_H =0.5, 0.2
 import pdb
 
@@ -115,7 +116,7 @@ class LMGenerator:
                 img = cv2.imread(img)
                 rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             except:
-                print('ERROR read img @lmDetect')
+                print('ERROR read img @lmDetect', img)
         if 'dt' in self.detectMode:
             bbox = self.faceDetect(img)
         if not bbox:
@@ -162,11 +163,14 @@ class LMGenerator:
         dataPath: 数据集路径
         outPath: 输出的路径
         ''' 
-        imgList = self.prepareImgList(dataPath)
+        # imgList = self.prepareImgList(dataPath)
+        imgList = glob.glob(dataPath)
         # 开始处理：人脸检测+关键点回归+保存
         lmList = []
         for path in tqdm(imgList):
-            ldm = self.lmDetect(osp.join(dataPath, path))
+            # ldm = self.lmDetect(osp.join(dataPath, path))
+            # pdb.set_trace()
+            ldm = self.lmDetect(path)
             if ldm is None:
                 lmList.append(None)
             else:
@@ -177,10 +181,59 @@ class LMGenerator:
         print('Done Preparing Dataset')
 
 
+def getRelative(path):
+    """
+    xxx/000.mp4/0.jpg -> 000.mp4/0.jpg
+    """
+    path, name = osp.split(path)
+    _, id = osp.split(path)
+    relativePath = osp.join(id, name)
+    return relativePath
+
+def getName(path):
+    """
+    000.mp4/0.jpg -> 004.mp4_0
+    """
+    '_'.join(osp.split(path)).rstrip('.jpg')
+
+class kernelSampler:
+    """ 支持 int 类型，或者 list(int), tuple(int)
+    """
+    def __init__(self, kernel):
+        if not isinstance(kernel, (list, tuple, int)):
+            raise NotImplementedError(kernel)
+        self.kernel = kernel
+        if not isinstance(kernel, int):
+            assert len(kernel) == 2
+            self.kernel = []
+            for i in range(kernel[0], kernel[1]):
+                if i % 2 == 1:
+                    self.kernel.append(i)
+
+    def __call__(self):
+        if isinstance(self.kernel, int):
+            return self.kernel
+        else:
+            return sample(self.kernel, k=1)[0]
+
+
+class sigmaSampler:
+    """ 支持 float 类型，或者 list(a, b), tuple(a, b)
+    """
+    def __init__(self, sigma):
+        self.sigma = sigma
+
+    def __call__(self):
+        if isinstance(self.sigma, (int, float)):
+            return self.kernel
+        else:
+            return uniform(self.sigma[0], self.sigma[1])
+
+
 class Blender:
     '''贴合器
     '''
-    def __init__(self, ldmPath, dataPath, topk=100, selectNum=1, gaussianKernel=5):
+    def __init__(self, ldmPath, dataPath, topk=100, selectNum=1, gaussianKernel=5, gaussianSigma=7):
         # 格式读取、转化。
         self.relativePaths, lms = [], []
         self.dataPath = dataPath
@@ -191,12 +244,15 @@ class Blender:
             relatPath_lms = json.load(f)
             for path, lm in relatPath_lms:
                 if lm is None:  continue
+                path = getRelative(path)
                 self.relativePaths.append(path)
                 lms.append(lm)
         self.lms = np.array(lms)  # 用于计算相似度矩阵
         N = self.lms.shape[0]
         self.lms = np.reshape(self.lms, (N, -1))
         print(self.lms.shape)  # (N, 136)
+        self.kSampler = kernelSampler(gaussianKernel)
+        self.sSampler = sigmaSampler(gaussianSigma)
 
     def search(self, idx):
         ''' 保证不重复
@@ -210,7 +266,7 @@ class Blender:
         # 去重
         # 要忽略的集合
         ignoring = [idx]
-        ignoring = [i for i in range(idx-10, idx+10)]  # 附近的10个都不要了
+        ignoring = [i for i in range(idx-100, idx+100)]  # 前后的100个都不要了
         filteredIndexes = [i for i in idxes if i not in ignoring]
         # pdb.set_trace()
         outs = sample(filteredIndexes, k=selectNum)  # 对 idx 去重
@@ -228,6 +284,7 @@ class Blender:
             i_path = self.relativePaths[i]
             js = self.search(i)
             for j in js:
+                # pdb.set_trace()
                 j_path = self.relativePaths[j]
                 blended, label = self.core(i, j)
                 i_name = '_'.join(osp.split(i_path)).rstrip('.jpg')
@@ -249,6 +306,7 @@ class Blender:
         imgPair = []
         for path in paths:
             imgPath = osp.join(self.dataPath, path)
+            # imgPath = path
             img = cv2.imread(imgPath)
             if img is None:
                 print('Error imgPath: ', imgPath)
@@ -272,10 +330,9 @@ class Blender:
 
         # 高斯模糊
         # blured = cv2.GaussianBlur(warped, (self.gaussianKernel, self.gaussianKernel), 3)
-        blured = cv2.GaussianBlur(warped, (self.gaussianKernel, self.gaussianKernel), sigmaX=3, sigmaY=3)
-        # 扩大边缘范围
-        for i in range(2):
-            blured = cv2.GaussianBlur(blured, (self.gaussianKernel, self.gaussianKernel), sigmaX=3, sigmaY=3)
+        ksize, sigma = self.kSampler(), self.sSampler()
+        # print(ksize, sigma)
+        blured = cv2.GaussianBlur(warped, (ksize, ksize), sigmaX=sigma, sigmaY=sigma)
         # 颜色矫正，迁移高斯模糊后blured mask区域的颜色，并对颜色纠正的blured区域人脸+原背景作为融合图片
         left, up, right, bot = get_roi(blured)  # 获取 warped 区域
         
@@ -319,15 +376,15 @@ if __name__ == '__main__':
     '''
     dataset = LMGenerator(detector=None, predictor='hr', pathMode='name', selectMode='first', detectMode='lm')
     dataset.prepareDataset(
-        dataPath='/nas/hjr/FF++c23/original/selected10k',
-        outPath='/nas/hjr/FF++c23/original/selected10kLm.txt'
+        dataPath='/nas/hjr/FF++c23/original/generator/*/*.jpg',
+        outPath='/nas/hjr/FF++c23/original/originalC23X100kLm.txt'
     )
     '''
     
     blender = Blender(
-        ldmPath='/mnt/hjr/FF++c23/original/selected10kLm.txt',
-        dataPath='/mnt/hjr/FF++c23/original/selected10k',
-        topk=50, selectNum=10, gaussianKernel=9
+        ldmPath='/mnt/hjr/FF++c23/original/originalC23X100kLm.txt',
+        dataPath='/mnt/hjr/FF++c23/original/generator',
+        topk=100, selectNum=1, gaussianKernel=[31,63], gaussianSigma=[7, 15]
         )
-    blender.blend(outPath='/mnt/hjr/FF++c23/original/selected10kBlendedx10')
+    blender.blend(outPath='/mnt/hjr/FF++c23/original/generatorBlendedRandomGaussian')
     
