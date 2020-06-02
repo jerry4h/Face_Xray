@@ -15,7 +15,15 @@ import numpy as np
 import cv2
 from tqdm import tqdm
 
-from dataset.blend_utils.color_transfer import color_transfer
+SCALE, SHAKE_H = 0.8, 0.2
+SAVE_BLEND, OUT_PATH = True, '/nas/hjr/tempBlended_faceswap'
+COLOR_TRANSFER = 'faceswap'
+BLEND_TYPE = 'faceswap'
+
+if COLOR_TRANSFER == 'faceswap':
+    from dataset.blend_utils.color_transfer_faceswap import color_transfer
+else:
+    from dataset.blend_utils.color_transfer import color_transfer
 from dataset.blend_utils.utils import files, FACIAL_LANDMARKS_IDXS, shape_to_np
 
 
@@ -253,8 +261,6 @@ class sigmaSampler:
         else:
             return uniform(self.sigma[0], self.sigma[1])
 
-SCALE, SHAKE_H = 0.8, 0.2
-SAVE_BLEND, OUT_PATH = True, '/nas/hjr/tempBlended1'
 
 class Blender:
     '''贴合器
@@ -317,8 +323,62 @@ class Blender:
             img = self.pixel_aug(img)
         return img
 
+    def core_xray(self, imgPair, warped):
+        # 高斯模糊
+        # blured = cv2.GaussianBlur(warped, (self.gaussianKernel, self.gaussianKernel), 3)
+        ksize, sigma = self.kSampler(), self.sSampler()
+        # print(ksize, sigma)
+        blured = cv2.GaussianBlur(warped, (ksize, ksize), sigmaX=sigma, sigmaY=sigma)
+        # 颜色矫正，迁移高斯模糊后blured mask区域的颜色，并对颜色纠正的blured区域人脸+原背景作为融合图片
+        left, up, right, bot = get_roi(blured)  # 获取 warped 区域
+        
+        # src 取中间部分采集色彩（效果感觉差了很多，还是得改基于 mask 的色彩迁移）
+        # h, w = bot-up, right-left
+        # src = (imgPair[0][up+h//4:bot-h//4,left+w//4:right-w//4,:]).astype(np.uint8)
+        src = (imgPair[0][up:bot,left:right,:]).astype(np.uint8)  # 这里命名有误。src 应当是前景
+        tgt = (imgPair[1][up:bot,left:right,:]).astype(np.uint8)  # 这里命名有误。tgt 应当是背景
+        # 基于 mask 的色彩迁移
+        targetBgrT = color_transfer(src, tgt, preserve_paper=False, mask=blured[up:bot,left:right,0]!=0)
+        # pdb.set_trace()
+        targetBgr_T = imgPair[1] * 1  # 开辟新内存空间
+        targetBgr_T[up:bot,left:right,:] = targetBgrT  # 将色彩迁移的部分转移到原图片
+        # 融合
+        resultantFace = forge(imgPair[0], targetBgr_T, blured)  # forged face
+        # 混合边界
+        resultantBounding = get_bounding(blured)
+        return resultantFace, resultantBounding
+
+    def core_alpha(self, imgPair, warped, featherAmount=0.2):
+        # from FF++ source code faceSwap
+        dst, src = imgPair[0], imgPair[1]
+        mask = warped
+
+        src = color_transfer(dst, src, preserve_paper=False, mask=mask)
+
+        #indeksy nie czarnych pikseli maski
+        maskIndices = np.where(mask != 0)
+        #te same indeksy tylko, ze teraz w jednej macierzy, gdzie kazdy wiersz to jeden piksel (x, y)
+        maskPts = np.hstack((maskIndices[1][:, np.newaxis], maskIndices[0][:, np.newaxis]))
+        faceSize = np.max(maskPts, axis=0) - np.min(maskPts, axis=0)
+        featherAmount = featherAmount * np.max(faceSize)
+
+        hull = cv2.convexHull(maskPts)
+        dists = np.zeros(maskPts.shape[0])
+        for i in range(maskPts.shape[0]):
+            dists[i] = cv2.pointPolygonTest(hull, (maskPts[i, 0], maskPts[i, 1]), True)
+
+        weights = np.clip(dists / featherAmount, 0, 1)
+        # import pdb; pdb.set_trace()
+
+        composedImg = np.copy(dst)
+        composedImg[maskIndices[0], maskIndices[1]] = weights[:, np.newaxis] * src[maskIndices[0], maskIndices[1]] + (1 - weights[:, np.newaxis]) * dst[maskIndices[0], maskIndices[1]]
+        alpha_mask = np.zeros_like(mask)
+        alpha_mask[maskIndices[0], maskIndices[1]] = weights[:, np.newaxis] * 1
+        xray = get_bounding(alpha_mask)
+        return composedImg, xray
+
     def core(self, i, j):
-        '''贴合：用 i 的背景，接纳 j 的前景
+        '''贴合：用 i 的背景，接纳 j 的前景（j 攻击 i）
         '''
         imgPair = [self.img_loader(k, do_aug=self.aug_at_load) for k in (i, j)]
         lms = [self.lms[i].reshape(-1,2) for k in (i, j)]
@@ -338,29 +398,11 @@ class Blender:
         warped = np.zeros_like(hullMask, dtype=warpedMask.dtype)
         warped[up:bot, left:right, :] = warpedMask
         # pdb.set_trace()
+        if BLEND_TYPE == 'faceswap':
+            resultantFace, resultantBounding = self.core_alpha(imgPair, warped)
+        else:
+            resultantFace, resultantBounding = self.core_xray(imgPair, warped)
 
-        # 高斯模糊
-        # blured = cv2.GaussianBlur(warped, (self.gaussianKernel, self.gaussianKernel), 3)
-        ksize, sigma = self.kSampler(), self.sSampler()
-        # print(ksize, sigma)
-        blured = cv2.GaussianBlur(warped, (ksize, ksize), sigmaX=sigma, sigmaY=sigma)
-        # 颜色矫正，迁移高斯模糊后blured mask区域的颜色，并对颜色纠正的blured区域人脸+原背景作为融合图片
-        left, up, right, bot = get_roi(blured)  # 获取 warped 区域
-        
-        # src 取中间部分采集色彩（效果感觉差了很多，还是得改基于 mask 的色彩迁移）
-        # h, w = bot-up, right-left
-        # src = (imgPair[0][up+h//4:bot-h//4,left+w//4:right-w//4,:]).astype(np.uint8)
-        src = (imgPair[0][up:bot,left:right,:]).astype(np.uint8)
-        tgt = (imgPair[1][up:bot,left:right,:]).astype(np.uint8)
-        # 基于 mask 的色彩迁移
-        targetBgrT = color_transfer(src, tgt, preserve_paper=False, mask=blured[up:bot,left:right,0]!=0)
-        # pdb.set_trace()
-        targetBgr_T = imgPair[1] * 1  # 开辟新内存空间
-        targetBgr_T[up:bot,left:right,:] = targetBgrT  # 将色彩迁移的部分转移到原图片
-        # 融合
-        resultantFace = forge(imgPair[0], targetBgr_T, blured)  # forged face
-        # 混合边界
-        resultantBounding = get_bounding(blured)
         return resultantFace, resultantBounding
 
     def search(self, idx):
@@ -403,15 +445,13 @@ class Blender:
                 name = '{}_{}'.format(i, j)  # j attack i
                 status = 0
                 blended_bgr = cv2.cvtColor(blended, cv2.COLOR_RGB2BGR)
-                status += cv2.imwrite(osp.join(OUT_PATH, name+'.jpg'), blended_bgr)
-                status += cv2.imwrite(osp.join(OUT_PATH, name+'_label'+'.jpg'), label*255)
+                status += cv2.imwrite(osp.join(OUT_PATH, name+'.png'), blended_bgr)
+                status += cv2.imwrite(osp.join(OUT_PATH, name+'_label'+'.png'), label*255)
                 assert status == 2, 'Error: image saving failed: {}/{}'.format(OUT_PATH, name)
             if get_path:
                 yield blended, label, i_path, j_path  # generator
             else:
                 yield blended, label
-
-    
 
 
 if __name__ == '__main__':

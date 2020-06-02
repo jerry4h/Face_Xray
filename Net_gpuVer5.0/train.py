@@ -107,11 +107,8 @@ def main():
     # 一些参数
     # 初始化optimzer，训练除nnb的原hrnet参数外的参数
     optimizer = get_optimizer(config, [nnb, nnc])  # TODO: 暂时直接全部初始化
-    if len(gpus) > 1:
-        nnb.module.pretrained_grad(False)
-    else:
-        nnb.pretrained_grad(False)
     NNB_GRAD = False
+    nnb.module.pretrained_grad(NNB_GRAD)
     last_iter = config.TRAIN.BEGIN_ITER
     best_perf = 0.0
 
@@ -129,7 +126,7 @@ def main():
     # Data loading code
     # transform还没能适用于其他规格，应做成[256, 256, 3]
     train_dataset = eval('dataset.' + config.DATASET.TRAIN_SET + '.' + config.DATASET.TRAIN_SET)(
-        root=config.DATASET.TRAIN_ROOT, list_name=config.DATASET.TRAIN_LIST, mode='train', Transform='mild')
+        root=config.DATASET.TRAIN_ROOT, list_name=config.DATASET.TRAIN_LIST, mode='train', Transform='simple')
 
     valid_dataset = eval('dataset.' + config.DATASET.EVAL_SET + '.' + config.DATASET.EVAL_SET)(
         root=config.DATASET.VALID_ROOT, list_name=config.DATASET.VALID_LIST, mode='valid', Transform='simple')
@@ -148,7 +145,9 @@ def main():
         while True:
             for x in loader:
                 yield x
-            loader.dataset.generate()
+            op = getattr(loader.dataset, "generate", None)
+            if callable(op):
+                op()
     train_generator = iter(cycle(train_loader))
 
     valid_loader = torch.utils.data.DataLoader(
